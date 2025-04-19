@@ -1,0 +1,108 @@
+#- name: Skip host
+#  hosts: all
+#  gather_facts: false
+#  tasks:
+#    - name: Skip other host
+#      meta: end_play
+#      when: inventory_hostname != target_host
+
+- name: Install and configure PostgreSQL
+  hosts: target
+  become: yes
+  vars:
+    allowed_ip: "{{ hostvars['other']['ansible_host'] | default(hostvars['other']['inventory_hostname']) }}"
+    postgresql_conf_path: >-
+      {{ '/etc/postgresql/15/main/postgresql.conf' if ansible_os_family == 'Debian'
+      else '/var/lib/pgsql/data/postgresql.conf' }}
+    pg_hba_conf_path: >-
+      {{ '/etc/postgresql/15/main/pg_hba.conf' if ansible_os_family == 'Debian'
+      else '/var/lib/pgsql/data/pg_hba.conf' }}
+  tasks:
+    - name: Install PostgreSQL
+      package:
+        name: "{{ 'postgresql-server' if ansible_os_family == 'RedHat' else 'postgresql-15' }}"
+        state: present
+
+    - name: Initialize PostgreSQL cluster (Debian)
+      command: pg_createcluster 15 main --start
+      args:
+        creates: "/etc/postgresql/15/main/postgresql.conf"
+      when: ansible_os_family == "Debian"
+
+    - name: Initialize PostgreSQL cluster (Alma/Centos)
+      become: yes
+      become_user: postgres
+      command: /usr/bin/postgresql-setup --initdb
+      args:
+        creates: "/var/lib/pgsql/data/PG_VERSION"
+      when: ansible_os_family == "RedHat"
+
+#    - name: Initialize database
+#      command: postgresql-setup --initdb
+#      when: ansible_os_family == "RedHat"
+
+    - name: Enable remote connections
+      lineinfile:
+        path: "{{ postgresql_conf_path }}"
+        regexp: "^#?listen_addresses ="
+        line: "listen_addresses = '*'"
+      notify: Restart PostgreSQL
+
+    - name: Allow student from 10.0.100.15
+      lineinfile:
+        path: "{{ pg_hba_conf_path }}"
+        line: "host  all  student  10.0.100.15/32  md5"
+        insertafter: EOF
+      notify: Restart PostgreSQL
+
+    - name: Allow student from 10.0.100.150
+      lineinfile:
+        path: "{{ pg_hba_conf_path }}"
+        line: "host  all  student  10.0.100.150/32  md5"
+        insertafter: EOF
+      notify: Restart PostgreSQL
+
+    - name: Allow student from 10.0.100.25
+      lineinfile:
+        path: "{{ pg_hba_conf_path }}"
+        line: "host  all  student  10.0.100.25/32  md5"
+        insertafter: EOF
+      notify: Restart PostgreSQL
+
+#    - name: Configure access for 'student'
+#      lineinfile:
+#        path: "{{ pg_hba_conf_path }}"
+#        line: "host  all  student  0.0.0.0/0  md5"
+#        insertafter: EOF
+#      notify: Restart PostgreSQL
+
+    - name: Start PostgreSQL
+      service:
+        name: postgresql
+        state: started
+        enabled: yes
+
+#    - name: Create user student
+#      become: yes
+#      become_user: postgres
+#      become_method: su
+#      postgresql_user:
+#        name: student
+#        password: student
+#        role_attr_flags: LOGIN
+#    - name: Manually creale PostgreSQL user student
+#      become: yes
+#      become_user: postgres
+#      shell: |
+#        psql -tc "SELECT 1 FROM pg_roles WHERE rolname='student'" | grep -q 1 || \
+#        psql -c "CREATE ROLE student WITH LOGIN PASSWORD 'student';"
+    - name: Manually create PostgreSQL user student using sudo
+      shell: |
+        sudo -u postgres psql -tc "SELECT 1 FROM pg_roles WHERE rolname='student'" | grep -q 1 || \
+        sudo -u postgres psql -c "CREATE ROLE student WITH LOGIN PASSWORD 'student';"
+
+  handlers:
+    - name: Restart PostgreSQL
+      service:
+        name: postgresql
+        state: restarted
