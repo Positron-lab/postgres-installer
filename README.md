@@ -29,8 +29,8 @@
 pip install -r requirements.txt
 ```
 - В скрипте install_postgres.py прописать пользователя на удаленном сервере (имя пользователя должно быть одинаковым на обоих целевых серверах) и путь до SSH ключа
-SSH_USER = "<user>"
-SSH_KEY = "/home/<user>/.ssh/id_rsa" (пример)
+- SSH_USER = "<user>"
+- SSH_KEY = "/home/<user>/.ssh/id_rsa" (пример)
 - Прописать ip целевых серверов в файле /ansible/inventory.ini
 [target]
 <x.x.x.x>
